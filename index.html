@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+<meta name="format-detection" content="telephone=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>在庫検品</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- View A: 初回設定（GAS API URL → スプシURL → 接続テスト） -->
+  <section id="view-setup" class="view">
+    <h1>在庫検品アプリ</h1>
+    <p class="subtle">スマホカメラでJANをスキャンし、本部スプレッドシートに記録します。最初に1度だけ、API と書き込み先スプレッドシートを設定してください。</p>
+    <div class="card">
+      <label for="api-url">GAS API URL</label>
+      <input id="api-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
+      <p class="subtle">※ 管理者から共有された GAS WebApp デプロイ URL を貼り付けてください。</p>
+
+      <label for="sheet-url">スプレッドシート URL</label>
+      <input id="sheet-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off" />
+      <p class="subtle">※ このGASのオーナーアカウントに対象シートを「編集者」として共有しておく必要があります。</p>
+
+      <button id="btn-test-url" class="block">接続テスト</button>
+      <div id="setup-result" class="subtle" style="margin-top:10px;"></div>
+      <button id="btn-save-url" class="block secondary" disabled>このURLを保存して進む</button>
+    </div>
+    <p class="footer-note">v<span id="app-version"></span> · 在庫検品アプリ</p>
+  </section>
+
+  <!-- View B: セッション開始（店舗・検品者・場所） -->
+  <section id="view-session" class="view">
+    <h1>セッション開始</h1>
+    <p class="subtle">これから一連の検品で共通する情報を入力します。</p>
+    <div class="card">
+      <label for="sess-store">店舗名</label>
+      <select id="sess-store"></select>
+      <label for="sess-inspector">検品者</label>
+      <input id="sess-inspector" type="text" placeholder="例: 山田太郎" autocomplete="off" />
+      <label for="sess-location">場所（任意）</label>
+      <input id="sess-location" type="text" placeholder="例: 倉庫A-3 / バックヤード棚2" autocomplete="off" />
+      <button id="btn-start-session" class="block">検品開始</button>
+      <button id="btn-back-to-setup" class="block ghost">URL設定に戻る</button>
+    </div>
+  </section>
+
+  <!-- View C: 検品中（カメラ＋数量入力＋直前スキャン） -->
+  <section id="view-scan" class="view">
+    <div class="session-bar">
+      <div>
+        <span class="badge" id="bar-store"></span>
+        <span class="badge" id="bar-inspector"></span>
+        <span class="badge" id="bar-location" hidden></span>
+      </div>
+      <button id="btn-end-session" class="end">終了</button>
+    </div>
+
+    <div class="card">
+      <div class="scanner"><div id="qr-reader"></div></div>
+      <div class="row" id="camera-controls">
+        <button id="btn-camera-toggle" class="secondary">一時停止</button>
+        <button id="btn-camera-switch" class="secondary">カメラ切替</button>
+      </div>
+      <div class="row" id="fallback-controls" hidden>
+        <button id="btn-fallback-camera" class="secondary">📸 カメラアプリで撮影して読取</button>
+        <input type="file" id="fallback-file-input" accept="image/*" capture="environment" hidden />
+      </div>
+      <p class="subtle" id="cam-status">カメラ起動中...</p>
+    </div>
+
+    <div class="card">
+      <label>読み取ったバーコード</label>
+      <input id="input-jan" type="text" class="detected-jan" placeholder="ここに表示 / 手入力も可" autocomplete="off" inputmode="numeric" />
+      <div id="product-name" class="subtle" style="min-height:1.2em;"></div>
+
+      <label>数量</label>
+      <div class="qty-wrap">
+        <button type="button" class="qty-btn" id="btn-qty-minus">−</button>
+        <input id="input-qty" type="number" min="0" step="1" value="1" />
+        <button type="button" class="qty-btn" id="btn-qty-plus">＋</button>
+      </div>
+
+      <label>備考（任意）</label>
+      <input id="input-note" type="text" placeholder="例: 賞味期限切れ / 破損" autocomplete="off" />
+
+      <button id="btn-add-scan" class="block">追加</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="margin:0;">直前のスキャン</h2>
+        <span class="badge" id="pending-badge">未送信 0 件</span>
+      </div>
+      <ul id="pending-list" class="list"></ul>
+      <button id="btn-flush" class="block">シートに送信</button>
+    </div>
+  </section>
+
+  <!-- View D: セッション集計 -->
+  <section id="view-summary" class="view">
+    <h1>セッション集計</h1>
+    <div class="card">
+      <ul class="list">
+        <li><span>件数</span><strong id="sum-count">0</strong></li>
+        <li><span>JAN ユニーク数</span><strong id="sum-unique">0</strong></li>
+        <li><span>合計数量</span><strong id="sum-total-qty">0</strong></li>
+        <li><span>所要時間</span><strong id="sum-elapsed">0分</strong></li>
+      </ul>
+      <button id="btn-new-session" class="block">新しいセッションを開始</button>
+      <button id="btn-close" class="block ghost">終了して閉じる</button>
+    </div>
+  </section>
+
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/vendor/html5-qrcode.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
