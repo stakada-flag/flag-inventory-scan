@@ -19,10 +19,14 @@
   var LS_PENDING = 'inv.pendingScans';
   var LS_LAST_CAMERA = 'inv.lastCameraId';
 
+  // ===== デフォルト URL（初回起動時の値・localStorage に保存されたら上書きされる） =====
+  var DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbw1nlN7LkIR-kON1lfGVUMtdTRzlqyi0DkQxavUPBQXirmEaJPXe35hfRgTIPtwRGFY/exec';
+  var DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1p7MsGw5Tuji3dmkWOKRJm0Zin8TRDdsvWZjh7GRh8CI/edit?gid=1606158276#gid=1606158276';
+
   // ===== 状態 =====
   var state = {
-    apiUrl: localStorage.getItem(LS_API_URL) || '',
-    sheetUrl: localStorage.getItem(LS_URL) || '',
+    apiUrl: localStorage.getItem(LS_API_URL) || DEFAULT_API_URL,
+    sheetUrl: localStorage.getItem(LS_URL) || DEFAULT_SHEET_URL,
     storeNames: [],
     session: null,           // { storeName, inspector, location, sessionId, startedAt }
     pending: [],             // [{ ts, jan, qty, note, productName }]
@@ -85,8 +89,8 @@
     loadPending();
     refreshPendingUI();
 
-    if (state.apiUrl) $('api-url').value = state.apiUrl;
-    if (state.sheetUrl) $('sheet-url').value = state.sheetUrl;
+    $('api-url').value = state.apiUrl || '';
+    $('sheet-url').value = state.sheetUrl || '';
 
     // 既にセッションがあれば検品画面へ
     var savedSess = readSession();
