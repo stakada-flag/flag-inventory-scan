@@ -285,11 +285,12 @@
 
   function buildScanConfig() {
     return {
-      fps: 10,
+      fps: 15,
       qrbox: function (vw, vh) {
+        // 読取エリアを画面の 80%（1Dバーコードを切れにくくする）
         var minEdge = Math.min(vw, vh);
-        var size = Math.floor(minEdge * 0.7);
-        return { width: size, height: Math.floor(size * 0.5) };
+        var size = Math.floor(minEdge * 0.85);
+        return { width: size, height: Math.floor(size * 0.55) };
       },
       aspectRatio: 4 / 3,
       // スマホ背面カメラの高解像度を要求（バーコード認識精度向上）
@@ -306,7 +307,12 @@
         Html5QrcodeSupportedFormats.UPC_A,
         Html5QrcodeSupportedFormats.UPC_E,
         Html5QrcodeSupportedFormats.QR_CODE
-      ]
+      ],
+      // ネイティブ BarcodeDetector API が使えれば優先（Android Chrome / 最新 iOS Safari で爆速・高精度）
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      },
+      rememberLastUsedCamera: true
     };
   }
 
