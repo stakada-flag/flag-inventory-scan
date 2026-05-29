@@ -283,40 +283,8 @@
     startCamera();
   }
 
-  function startCamera() {
-    if (typeof Html5Qrcode === 'undefined') {
-      $('cam-status').textContent = 'カメラライブラリの読込に失敗しました（再読込してください）。';
-      return;
-    }
-    if (!state.qr) {
-      state.qr = new Html5Qrcode('qr-reader', { verbose: false });
-    }
-    Html5Qrcode.getCameras().then(function (devices) {
-      state.cameras = devices || [];
-      if (!state.cameras.length) {
-        enableFallbackCamera('カメラが見つかりません。');
-        return;
-      }
-      var lastId = localStorage.getItem(LS_LAST_CAMERA);
-      state.cameraIndex = 0;
-      if (lastId) {
-        var idx = state.cameras.findIndex(function (c) { return c.id === lastId; });
-        if (idx >= 0) state.cameraIndex = idx;
-      } else {
-        // 背面カメラ優先
-        var backIdx = state.cameras.findIndex(function (c) { return /back|rear|environment/i.test(c.label || ''); });
-        if (backIdx >= 0) state.cameraIndex = backIdx;
-      }
-      doStart();
-    }).catch(function (e) {
-      enableFallbackCamera('カメラ起動エラー: ' + (e && e.message || e));
-    });
-  }
-
-  function doStart() {
-    if (!state.cameras.length) return;
-    var cam = state.cameras[state.cameraIndex];
-    var config = {
+  function buildScanConfig() {
+    return {
       fps: 10,
       qrbox: function (vw, vh) {
         var minEdge = Math.min(vw, vh);
@@ -324,6 +292,12 @@
         return { width: size, height: Math.floor(size * 0.5) };
       },
       aspectRatio: 4 / 3,
+      // スマホ背面カメラの高解像度を要求（バーコード認識精度向上）
+      videoConstraints: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
       formatsToSupport: [
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.EAN_8,
@@ -334,6 +308,57 @@
         Html5QrcodeSupportedFormats.QR_CODE
       ]
     };
+  }
+
+  function startCamera() {
+    if (typeof Html5Qrcode === 'undefined') {
+      $('cam-status').textContent = 'カメラライブラリの読込に失敗しました（再読込してください）。';
+      return;
+    }
+    if (!state.qr) {
+      state.qr = new Html5Qrcode('qr-reader', { verbose: false });
+    }
+    // 起動順序:
+    //   1. facingMode: 'environment' で背面カメラを直接指定（iOS Safari 対策）
+    //   2. 失敗したら cameraId 方式で fallback
+    var config = buildScanConfig();
+    state.qr.start({ facingMode: { ideal: 'environment' } }, config, onDetected, function () {})
+      .then(function () {
+        state.cameraRunning = true;
+        $('cam-status').textContent = 'カメラ起動中（背面）';
+        // カメラ切替ボタン用に一覧を取得（権限承認後は labels も取れる）
+        Html5Qrcode.getCameras().then(function (devices) {
+          state.cameras = devices || [];
+        }).catch(function () {});
+      })
+      .catch(function () {
+        // facingMode で失敗 → cameraId 方式へ fallback
+        Html5Qrcode.getCameras().then(function (devices) {
+          state.cameras = devices || [];
+          if (!state.cameras.length) {
+            enableFallbackCamera('カメラが見つかりません。');
+            return;
+          }
+          var lastId = localStorage.getItem(LS_LAST_CAMERA);
+          state.cameraIndex = 0;
+          if (lastId) {
+            var idx = state.cameras.findIndex(function (c) { return c.id === lastId; });
+            if (idx >= 0) state.cameraIndex = idx;
+          } else {
+            var backIdx = state.cameras.findIndex(function (c) { return /back|rear|environment/i.test(c.label || ''); });
+            if (backIdx >= 0) state.cameraIndex = backIdx;
+          }
+          doStartByCameraId();
+        }).catch(function (e) {
+          enableFallbackCamera('カメラ起動エラー: ' + (e && e.message || e));
+        });
+      });
+  }
+
+  function doStartByCameraId() {
+    if (!state.cameras.length) return;
+    var cam = state.cameras[state.cameraIndex];
+    var config = buildScanConfig();
     state.qr.start(cam.id, config, onDetected, function () {})
       .then(function () {
         state.cameraRunning = true;
@@ -472,19 +497,32 @@
       });
     } else {
       $('btn-camera-toggle').textContent = '一時停止';
-      doStart();
+      startCamera();
     }
   }
 
   function onSwitchCamera() {
-    if (!state.cameras.length || state.cameras.length < 2) {
-      toast('切替可能なカメラがありません', 'error');
+    function doSwitch() {
+      if (!state.cameras.length || state.cameras.length < 2) {
+        toast('切替可能なカメラがありません', 'error');
+        return;
+      }
+      stopCamera(function () {
+        state.cameraIndex = (state.cameraIndex + 1) % state.cameras.length;
+        doStartByCameraId();
+      });
+    }
+    if (!state.cameras.length) {
+      // facingMode 起動だったため未取得 → 取得してから切替
+      Html5Qrcode.getCameras().then(function (devices) {
+        state.cameras = devices || [];
+        doSwitch();
+      }).catch(function () {
+        toast('カメラ一覧が取得できません', 'error');
+      });
       return;
     }
-    stopCamera(function () {
-      state.cameraIndex = (state.cameraIndex + 1) % state.cameras.length;
-      doStart();
-    });
+    doSwitch();
   }
 
   // JAN 入力時に商品マスタ照会
